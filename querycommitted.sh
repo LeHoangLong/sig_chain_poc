@@ -1,0 +1,1 @@
+peer lifecycle chaincode querycommitted --channelID mychannel --name token --cafile ${FABRIC_HOME}/organizations/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem

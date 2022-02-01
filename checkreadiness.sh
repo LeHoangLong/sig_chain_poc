@@ -1,0 +1,1 @@
+peer lifecycle chaincode checkcommitreadiness --channelID mychannel --name token --version 1.0 --sequence 1 --tls --cafile ${FABRIC_HOME}/organizations/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem --output json
