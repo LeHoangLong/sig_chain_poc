@@ -6,53 +6,83 @@ import (
 	"crypto/sha512"
 	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
+	"time"
 
 	"github.com/hyperledger/fabric-contract-api-go/contractapi"
 )
 
-type BaseError struct {
-	message string
-}
-
-func (m *BaseError) Error() string {
-	return m.message
-}
-
-type NotFoundError struct {
-	BaseError
-}
-
-type AlreadyExistsError struct {
-	BaseError
-}
-
 // SmartContract provides functions for managing an Asset
 type GraphContract struct {
-	contractapi.Contract
 }
 
 /// Increment version after every update so that the next time an update is needed,
 /// a different signature is needed
-type Node struct {
+type NodeHeader struct {
 	Id                    string          `json:"Id"`
 	IsFinalized           bool            `json:"IsFinalized"`
-	Data                  interface{}     `json:"Data"`
-	NextNodeHashedIds     map[string]bool `json:"NextNodeHashedIds"` /// used a set
-	PreviousNodeHashedIds map[string]bool `json:"PreviousNodeHashedIds"`
+	PreviousNodeHashedIds map[string]bool `json:"PreviousNodeHashedIds"` /// used as a set
+	NextNodeHashedIds     map[string]bool `json:"NextodeHashedIds"`      /// used as a set
 	OwnerPublicKey        string          `json:"OwnerPublicKey"`
+	CreatedTime           time.Time       `json:"CreatedTime"`
+	Signature             string          `json:"Signature"`
 }
 
-func (n *Node) Verify(
+type NodeI interface {
+	GetHeader() NodeHeader
+	SetHeader(NodeHeader)
+}
+
+func MakeNodeHeader(
+	iId string,
+	iIsFinalized bool,
+	iPreviousNodeHashedIds map[string]bool,
+	iNextNodeHashedIds map[string]bool,
+	iOwnerPublicKey string,
+	iCreatedTime time.Time,
 	iSignature string,
+) NodeHeader {
+	return NodeHeader{
+		Id:                    iId,
+		IsFinalized:           iIsFinalized,
+		NextNodeHashedIds:     iNextNodeHashedIds,
+		PreviousNodeHashedIds: iPreviousNodeHashedIds,
+		OwnerPublicKey:        iOwnerPublicKey,
+		CreatedTime:           iCreatedTime,
+		Signature:             iSignature,
+	}
+}
+
+func parsePublicKey(
+	iPublicKey string,
+) (interface{}, error) {
+	block, _ := pem.Decode([]byte(iPublicKey))
+	return x509.ParsePKCS1PublicKey(block.Bytes)
+}
+
+func (c *GraphContract) Verify(
+	iCtx contractapi.TransactionContextInterface,
+	iSignature string,
+	iNode NodeI,
 ) error {
-	json, err := json.Marshal(n)
+	noSignatureHeader := iNode.GetHeader()
+	originalHeader := iNode.GetHeader()
+	noSignatureHeader.Signature = ""
+
+	defer func() {
+		iNode.SetHeader(originalHeader)
+	}()
+	iNode.SetHeader(noSignatureHeader)
+
+	json, err := json.Marshal(iNode)
+	fmt.Println("json: ", string(json))
 	if err != nil {
 		return err
 	}
 
 	hash := sha512.Sum512(json)
-	ifc, err := x509.ParsePKIXPublicKey([]byte(n.OwnerPublicKey))
+	ifc, err := parsePublicKey(iNode.GetHeader().OwnerPublicKey)
 	if err != nil {
 		return err
 	}
@@ -60,188 +90,127 @@ func (n *Node) Verify(
 	if !ok {
 		return fmt.Errorf("unsupported key format")
 	}
+
 	err = rsa.VerifyPKCS1v15(key, crypto.SHA512, hash[:], []byte(iSignature))
-
-	return err
-}
-
-func (n *Node) verifyWithPublicKey(
-	iSignature string,
-	iPublicKey string,
-) error {
-	newNodeJson, err := json.Marshal(n)
 	if err != nil {
-		return err
+		return fmt.Errorf("verify err: %s", err.Error())
 	}
 
-	hash := sha512.Sum512(newNodeJson)
-	ifc, err := x509.ParsePKIXPublicKey([]byte(iPublicKey))
-	if err != nil {
-		return err
-	}
-	key, ok := ifc.(*rsa.PublicKey)
-	if !ok {
-		return fmt.Errorf("unsupported key format")
-	}
-	err = rsa.VerifyPKCS1v15(key, crypto.SHA512, hash[:], []byte(iSignature))
 	return err
 }
 
 func (c *GraphContract) GetNode(
-	ctx contractapi.TransactionContextInterface,
+	iCtx contractapi.TransactionContextInterface,
 	iNodeId string,
-) (*Node, error) {
-	nodeJson, err := ctx.GetStub().GetState(iNodeId)
+	oNode interface{},
+) error {
+	nodeJson, err := iCtx.GetStub().GetState(iNodeId)
 
 	if err != nil {
-		return nil, fmt.Errorf("could not get state with token id %s: %v", iNodeId, err)
+		return fmt.Errorf("could not get state with token id %s: %v", iNodeId, err)
 	}
 
 	if nodeJson == nil {
-		return nil, &NotFoundError{
-			BaseError{
-				message: fmt.Sprintf("Token with id %s does not exist", iNodeId),
-			},
-		}
+		return fmt.Errorf("Token with id %s does not exist", iNodeId)
 	}
 
-	var node Node
-	err = json.Unmarshal(nodeJson, &node)
+	err = json.Unmarshal(nodeJson, oNode)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	return &node, nil
+	return nil
 }
 
+/// iNode are used as placeholders for json unmarshal / marshal and can be empty
 func (c *GraphContract) FinalizeNode(
-	ctx contractapi.TransactionContextInterface,
-	iNodeId string,
-	iSignature string,
-) error {
-	thisNode, err := c.GetNode(ctx, iNodeId)
-
-	if err != nil {
-		return err
-	}
-
-	if thisNode == nil {
-		return &NotFoundError{
-			BaseError{
-				message: fmt.Sprintf("Node with id %s does not exist", iNodeId),
-			},
-		}
-	}
-
-	thisNode.IsFinalized = true
-
-	err = thisNode.Verify(iSignature)
-
-	if err != nil {
-		return err
-	}
-
-	thisNodeJson, err := json.Marshal(thisNode)
-	if err != nil {
-		return err
-	}
-
-	return ctx.GetStub().PutState(iNodeId, thisNodeJson)
-}
-
-/// for batch update
-func (c *GraphContract) UpdateNode(
 	iCtx contractapi.TransactionContextInterface,
-	iNode Node,
+	iNodeId string,
 	iSignature string,
+	iNode NodeI,
 ) error {
-	oldNode, err := c.GetNode(iCtx, iNode.Id)
-	if err != nil {
-		return err
-	}
-
-	err = iNode.verifyWithPublicKey(
-		iSignature,
-		oldNode.OwnerPublicKey,
-	)
+	err := c.GetNode(iCtx, iNodeId, &iNode)
 
 	if err != nil {
 		return err
 	}
 
-	newNodeJson, err := json.Marshal(iNode)
+	newHeader := iNode.GetHeader()
+	newHeader.IsFinalized = true
+	iNode.SetHeader(newHeader)
+
+	err = c.Verify(iCtx, iSignature, iNode)
+
 	if err != nil {
 		return err
 	}
 
-	err = iCtx.GetStub().PutState(oldNode.Id, newNodeJson)
-	return err
+	thisNodeJson, err := json.Marshal(iNode)
+	if err != nil {
+		return err
+	}
+
+	return iCtx.GetStub().PutState(iNodeId, thisNodeJson)
 }
 
+/// iNode and iNextNode are used as placeholders for json unmarshal / marshal and can be empty
 func (c *GraphContract) CreateEdge(
-	ctx contractapi.TransactionContextInterface,
+	iCtx contractapi.TransactionContextInterface,
 	iNodeId string,
+	iNode NodeI,
+	iNewSignature string,
 	iNextNodeId string,
-	iSignature string,
-	iNextNodeSignature string,
+	iNextNode NodeI,
+	iNextNodeNewSignature string,
 ) error {
-	thisNode, err := c.GetNode(ctx, iNodeId)
-
+	id := iNodeId
+	nextNodeId := iNextNodeId
+	err := c.GetNode(iCtx, id, &iNode)
 	if err != nil {
 		return err
 	}
-
-	if thisNode == nil {
-		return &NotFoundError{
-			BaseError{
-				message: fmt.Sprintf("Node with id %s does not exist", iNodeId),
-			},
-		}
+	if iNode.GetHeader().IsFinalized {
+		return fmt.Errorf("node is already finalized")
 	}
 
-	nextNode, err := c.GetNode(ctx, iNextNodeId)
+	err = c.GetNode(iCtx, nextNodeId, &iNextNode)
 	if err != nil {
 		return err
 	}
-
-	if nextNode == nil {
-		return &NotFoundError{
-			BaseError{
-				message: fmt.Sprintf("Node with id %s does not exist", iNextNodeId),
-			},
-		}
+	if iNextNode.GetHeader().IsFinalized {
+		return fmt.Errorf("next node is already finalized")
 	}
 
 	hasher := sha512.New()
-	thisNode.NextNodeHashedIds[string(hasher.Sum([]byte(iNextNodeId)))] = true
-	nextNode.PreviousNodeHashedIds[string(hasher.Sum([]byte(iNodeId)))] = true
+	iNode.GetHeader().NextNodeHashedIds[string(hasher.Sum([]byte(nextNodeId)))] = true
+	iNextNode.GetHeader().PreviousNodeHashedIds[string(hasher.Sum([]byte(id)))] = true
 
-	err = thisNode.Verify(iSignature)
+	err = c.Verify(iCtx, iNewSignature, iNode)
 	if err != nil {
 		return err
 	}
 
-	err = nextNode.Verify(iNextNodeSignature)
+	err = c.Verify(iCtx, iNextNodeNewSignature, iNextNode)
 	if err != nil {
 		return err
 	}
 
-	thisNodeJson, err := json.Marshal(thisNode)
+	thisNodeJson, err := json.Marshal(iNode)
 	if err != nil {
 		return err
 	}
 
-	nextNodeJson, err := json.Marshal(nextNode)
+	nextNodeJson, err := json.Marshal(iNextNode)
 	if err != nil {
 		return err
 	}
 
-	err = ctx.GetStub().PutState(iNodeId, thisNodeJson)
+	err = iCtx.GetStub().PutState(id, thisNodeJson)
 	if err != nil {
 		return err
 	}
 
-	err = ctx.GetStub().PutState(iNextNodeId, nextNodeJson)
+	err = iCtx.GetStub().PutState(nextNodeId, nextNodeJson)
 	if err != nil {
 		return err
 	}
@@ -250,54 +219,42 @@ func (c *GraphContract) CreateEdge(
 }
 
 /// new nodes reference to updated node
-/// iSignature is to sign the updated node
-func (c *GraphContract) CreateReferencedNodesAndFinalize(
+/// iNewSignature is to sign the updated node
+/// iNode is used as placeholders for json unmarshal / marshal and can be empty
+func (c *GraphContract) CreateChildrenNodesAndFinalize(
 	iCtx contractapi.TransactionContextInterface,
 	iNodeId string,
-	iNewNodeIds []string,
-	iData []interface{},
-	iOwnerPublicKey []string,
-	iSignature string,
-	iNewPublicKey []string,
+	iNode NodeI,
+	iNewSignature string,
+	iChildren []NodeI,
 ) error {
-	node, err := c.GetNode(iCtx, iNodeId)
+	nodeId := iNodeId
+	err := c.GetNode(iCtx, nodeId, &iNode)
 	if err != nil {
 		return err
 	}
 
-	if len(iNewNodeIds) != len(iData) {
-		return fmt.Errorf("mistmach data and node ids")
-	}
+	header := iNode.GetHeader()
 
-	if len(iData) != len(iOwnerPublicKey) {
-		return fmt.Errorf("mistmach data and owner public key")
-	}
-
-	if node.IsFinalized {
+	if header.IsFinalized {
 		return fmt.Errorf("node finalized")
 	}
 
-	for _, id := range iNewNodeIds {
-		idHash := sha512.Sum512([]byte(id))
-		node.NextNodeHashedIds[string(idHash[:])] = true
+	for _, node := range iChildren {
+		idHash := sha512.Sum512([]byte(node.GetHeader().Id))
+		header.NextNodeHashedIds[string(idHash[:])] = true
 	}
-	node.IsFinalized = true
+	header.IsFinalized = true
 
-	nodeJson, err := json.Marshal(node)
-
-	err = node.Verify(iSignature)
+	err = c.Verify(iCtx, iNewSignature, iNode)
 	if err != nil {
 		return err
 	}
 
-	err = iCtx.GetStub().PutState(node.Id, nodeJson)
-	if err != nil {
-		return err
-	}
-
-	oldNodeHash := sha512.Sum512([]byte(node.Id))
-	for i := 0; i < len(iData); i++ {
-		nodeExists, err := c.DoesNodeExists(iCtx, iNewNodeIds[i])
+	oldNodeHashBytes := sha512.Sum512([]byte(header.Id))
+	oldNodeHash := string(oldNodeHashBytes[:])
+	for _, child := range iChildren {
+		nodeExists, err := c.DoesNodeExists(iCtx, child.GetHeader().Id)
 		if err != nil {
 			return err
 		}
@@ -306,24 +263,28 @@ func (c *GraphContract) CreateReferencedNodesAndFinalize(
 			return fmt.Errorf("node already exists")
 		}
 
-		newNode := Node{
-			Id:                    iNewNodeIds[i],
-			IsFinalized:           false,
-			Data:                  iData[i],
-			NextNodeHashedIds:     map[string]bool{},
-			PreviousNodeHashedIds: map[string]bool{string(oldNodeHash[:]): true},
-			OwnerPublicKey:        iOwnerPublicKey[i],
-		}
+		child.GetHeader().PreviousNodeHashedIds[oldNodeHash] = true
 
-		newNodeJson, err := json.Marshal(newNode)
+		err = c.Verify(iCtx, child.GetHeader().Signature, child)
 		if err != nil {
 			return err
 		}
 
-		err = iCtx.GetStub().PutState(newNode.Id, newNodeJson)
+		newNodeJson, err := json.Marshal(child)
 		if err != nil {
 			return err
 		}
+
+		err = iCtx.GetStub().PutState(child.GetHeader().Id, newNodeJson)
+		if err != nil {
+			return err
+		}
+	}
+
+	nodeJson, err := json.Marshal(iNode)
+	err = iCtx.GetStub().PutState(header.Id, nodeJson)
+	if err != nil {
+		return err
 	}
 
 	return nil
@@ -331,53 +292,29 @@ func (c *GraphContract) CreateReferencedNodesAndFinalize(
 
 func (c *GraphContract) CreateNode(
 	iCtx contractapi.TransactionContextInterface,
-	iNodeId string,
-	iData interface{},
-	iOwnerPublicKey string,
-	iSignature string,
+	iNode NodeI,
 ) error {
-	doesNodeExists, err := c.DoesNodeExists(iCtx, iNodeId)
+	doesNodeExists, err := c.DoesNodeExists(iCtx, iNode.GetHeader().Id)
 	if err != nil {
 		return err
 	}
 
 	if doesNodeExists {
-		return &AlreadyExistsError{
-			BaseError{
-				message: "Node id already used",
-			},
-		}
+		return fmt.Errorf("Node id already used")
 	}
 
-	ifc, err := x509.ParsePKIXPublicKey([]byte(iOwnerPublicKey))
+	err = c.Verify(iCtx, iNode.GetHeader().Signature, iNode)
+	fmt.Printf("iNode: %+v\n", iNode)
 	if err != nil {
 		return err
 	}
 
-	if _, ok := ifc.(*rsa.PublicKey); !ok {
-		return fmt.Errorf("unpported key format")
-	}
-
-	newNode := Node{
-		Id:                    iNodeId,
-		Data:                  iData,
-		NextNodeHashedIds:     map[string]bool{},
-		PreviousNodeHashedIds: map[string]bool{},
-		OwnerPublicKey:        iOwnerPublicKey,
-		IsFinalized:           false,
-	}
-
-	err = newNode.Verify(iSignature)
+	nodeJson, err := json.Marshal(iNode)
 	if err != nil {
 		return err
 	}
 
-	tokenJson, err := json.Marshal(newNode)
-	if err != nil {
-		return err
-	}
-
-	return iCtx.GetStub().PutState(iNodeId, tokenJson)
+	return iCtx.GetStub().PutState(iNode.GetHeader().Id, nodeJson)
 }
 
 func (c *GraphContract) DoesNodeExists(
@@ -393,44 +330,91 @@ func (c *GraphContract) DoesNodeExists(
 	return nodeJson != nil, nil
 }
 
+func (c *GraphContract) AreIdsAvailable(
+	iCtx contractapi.TransactionContextInterface,
+	iIds []string,
+) ([]bool, error) {
+	ret := []bool{}
+	for _, id := range iIds {
+		nodeJson, err := iCtx.GetStub().GetState(id)
+		if err != nil {
+			return []bool{}, fmt.Errorf("failed to read from ledger: %v", err)
+		}
+
+		ret = append(ret, nodeJson == nil)
+	}
+
+	return ret, nil
+}
+
 func (c *GraphContract) TransferNodeOwnership(
 	iCtx contractapi.TransactionContextInterface,
 	iNodeId string,
+	iNode NodeI,
 	iNewNodeId string,
+	iTransferTime time.Time,
 	iNewOwnerPublicKey string,
-	iSignature string,
+	iNewSignature string,
 	iNewNodeSignature string,
 ) error {
-	oldNode, err := c.GetNode(iCtx, iNodeId)
+	id := iNodeId
+	nodeExists, err := c.DoesNodeExists(iCtx, id)
 	if err != nil {
 		return err
 	}
+	if !nodeExists {
+		return fmt.Errorf("node with id %s does not exists", id)
+	}
 
-	nodeExists, err := c.DoesNodeExists(iCtx, iNewNodeId)
+	nodeExists, err = c.DoesNodeExists(iCtx, iNewNodeId)
 	if err != nil {
 		return err
 	}
-
 	if nodeExists {
 		return fmt.Errorf("node with id %s already exists", iNewNodeId)
 	}
 
-	newNode := oldNode
-	newNode.OwnerPublicKey = iNewOwnerPublicKey
+	newNode := iNode
+	newHeader := newNode.GetHeader()
+	newHeader.Id = iNewNodeId
+	newHeader.OwnerPublicKey = iNewOwnerPublicKey
+	newHeader.CreatedTime = iTransferTime
+	newNode.SetHeader(newHeader)
 
 	hasher := sha512.New()
 
-	oldNode.NextNodeHashedIds[string(hasher.Sum([]byte(iNewNodeId)))] = true
-	oldNode.IsFinalized = true
+	oldNode := iNode
+	oldNodeHeader := iNode.GetHeader()
+	oldNodeHeader.NextNodeHashedIds[string(hasher.Sum([]byte(iNewNodeId)))] = true
+	oldNodeHeader.IsFinalized = true
+	oldNode.SetHeader(oldNodeHeader)
 
-	newNode.PreviousNodeHashedIds[string(hasher.Sum([]byte(iNodeId)))] = true
+	newNode.GetHeader().PreviousNodeHashedIds[string(hasher.Sum([]byte(id)))] = true
 
-	err = oldNode.Verify(iSignature)
+	err = c.Verify(iCtx, iNewSignature, oldNode)
 	if err != nil {
 		return err
 	}
 
-	err = newNode.Verify(iSignature)
+	err = c.Verify(iCtx, iNewNodeSignature, newNode)
+	if err != nil {
+		return err
+	}
+
+	nodeJson, err := json.Marshal(oldNode)
+	if err != nil {
+		return err
+	}
+	err = iCtx.GetStub().PutState(id, nodeJson)
+	if err != nil {
+		return err
+	}
+
+	nodeJson, err = json.Marshal(newNode)
+	if err != nil {
+		return err
+	}
+	err = iCtx.GetStub().PutState(iNewNodeId, nodeJson)
 	if err != nil {
 		return err
 	}

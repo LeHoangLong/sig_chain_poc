@@ -19,15 +19,18 @@ const (
 	eHash                 NodeType = "eHash"
 )
 
-type TypedNode struct {
-	Type string      `json:"Type"` /// Material / Certificate / CertificateAuthority / Data / Hash
-	Data interface{} `json:"Data"`
+type Material struct {
+	graph.NodeHeader
+	Name     string `json:"Name"`
+	Unit     string `json:"Unit"`
+	Quantity string `json:"Quantity"`
 }
 
-type Material struct {
-	Name     string          `json:"Name"`
-	Unit     string          `json:"Unit"`
-	Quantity decimal.Decimal `json:"Quantity"`
+func (m *Material) GetHeader() graph.NodeHeader {
+	return m.NodeHeader
+}
+func (m *Material) SetHeader(iHeader graph.NodeHeader) {
+	m.NodeHeader = iHeader
 }
 
 type CertificateAuthority struct {
@@ -46,141 +49,84 @@ type MaterialContract struct {
 	contractapi.Contract
 }
 
-type TypedGraphContract struct {
-	contractapi.Contract
-}
-
-func (c *TypedGraphContract) CreateReferencedTypedNodesAndFinalize(
-	iCtx contractapi.TransactionContextInterface,
-	iNodeId string,
-	iNewNodeIds []string,
-	iType []string,
-	iData []interface{},
-	iOwnerPublicKey []string,
-	iSignature string,
-	iNewNodeSignatures []string,
-) error {
-	typedNodes := []interface{}{}
-
-	if len(iNewNodeIds) != len(iType) {
-		return fmt.Errorf("mismatch new node id and types")
-	}
-
-	if len(iNewNodeIds) != len(iData) {
-		return fmt.Errorf("mismatch new node id and data")
-	}
-
-	if len(iNewNodeIds) != len(iOwnerPublicKey) {
-		return fmt.Errorf("mismatch new node id and owner public key")
-	}
-
-	for i, data := range iData {
-		typedNode := TypedNode{
-			Data: data,
-			Type: iType[i],
-		}
-
-		typedNodes = append(typedNodes, typedNode)
-	}
-
-	graphContract := graph.GraphContract{}
-	err := graphContract.CreateReferencedNodesAndFinalize(
-		iCtx,
-		iNodeId,
-		iNewNodeIds,
-		typedNodes,
-		iOwnerPublicKey,
-		iSignature,
-		iNewNodeSignatures,
-	)
-	return err
-}
-
-func (c *TypedGraphContract) CreateTypedNode(
-	iCtx contractapi.TransactionContextInterface,
-	iNodeId string,
-	iType string,
-	iData interface{},
-	iOwnerPublicKey string,
-	iSignature string,
-) error {
-	graphContract := graph.GraphContract{}
-	typedNode := TypedNode{
-		Data: iData,
-		Type: iType,
-	}
-
-	return graphContract.CreateNode(
-		iCtx,
-		iNodeId,
-		typedNode,
-		iOwnerPublicKey,
-		iSignature,
-	)
-}
-
-func (c *TypedGraphContract) GetTypedNode(
-	iCtx contractapi.TransactionContextInterface,
-	iNodeId string,
-) (*TypedNode, error) {
-	graphContract := graph.GraphContract{}
-	node, err := graphContract.GetNode(iCtx, iNodeId)
-	if err != nil {
-		return nil, err
-	}
-
-	if typedNode, ok := node.Data.(TypedNode); ok {
-		return &typedNode, err
-	} else {
-		return nil, fmt.Errorf("invalid node date")
-	}
-}
-
 func (c *MaterialContract) CreateMaterial(
 	iCtx contractapi.TransactionContextInterface,
 	iNodeId string,
 	iName string,
 	iUnit string,
-	iQuantity decimal.Decimal,
+	iQuantity string,
 	iOwnerPublicKey string,
+	iCreatedTime time.Time,
 	iSignature string,
 ) error {
-	graphContract := TypedGraphContract{}
-	material := Material{
-		Name:     iName,
-		Unit:     iUnit,
-		Quantity: iQuantity,
+	quantity, err := decimal.NewFromString(iQuantity)
+	if err != nil {
+		return err
 	}
 
-	return graphContract.CreateTypedNode(
-		iCtx,
+	transactionTime, err := iCtx.GetStub().GetTxTimestamp()
+	if err != nil {
+		return err
+	}
+
+	timeDiff := transactionTime.Seconds - iCreatedTime.Unix()
+	if timeDiff < 0 {
+		timeDiff = -timeDiff
+	}
+
+	if timeDiff > 3600 {
+		return fmt.Errorf("Timestamp does not match with transaction's timestamp")
+	}
+
+	graphContract := graph.GraphContract{}
+	nodeHeader := graph.MakeNodeHeader(
 		iNodeId,
-		eMaterial,
-		material,
+		false,
+		map[string]bool{},
+		map[string]bool{},
 		iOwnerPublicKey,
+		iCreatedTime,
 		iSignature,
 	)
+	material := MakeMaterial(
+		iName,
+		iUnit,
+		quantity.String(),
+		nodeHeader,
+	)
+
+	return graphContract.CreateNode(
+		iCtx,
+		&material,
+	)
+}
+
+func MakeMaterial(
+	iName string,
+	iUnit string,
+	iQuantity string,
+	iHeader graph.NodeHeader,
+) Material {
+	return Material{
+		NodeHeader: iHeader,
+		Name:       iName,
+		Unit:       iUnit,
+		Quantity:   iQuantity,
+	}
 }
 
 func (c *MaterialContract) GetMaterial(
 	iCtx contractapi.TransactionContextInterface,
 	iNodeId string,
 ) (*Material, error) {
-	typedGraphContract := TypedGraphContract{}
-	typedNode, err := typedGraphContract.GetTypedNode(iCtx, iNodeId)
+	graphContract := graph.GraphContract{}
+	var material Material
+	err := graphContract.GetNode(iCtx, iNodeId, &material)
 	if err != nil {
 		return nil, err
 	}
 
-	if typedNode.Type != eMaterial {
-		return nil, fmt.Errorf("incorrect type")
-	}
-
-	if material, ok := typedNode.Data.(Material); ok {
-		return &material, nil
-	} else {
-		return nil, fmt.Errorf("not a material")
-	}
+	return &material, nil
 }
 
 func (c *MaterialContract) TransferMaterial(
@@ -190,12 +136,36 @@ func (c *MaterialContract) TransferMaterial(
 	iNewOwnerPublicKey string,
 	iSignature string,
 	iNewNodeSignature string,
+	iTransferTime time.Time,
 ) error {
 	graphContract := graph.GraphContract{}
+
+	var material Material
+	err := graphContract.GetNode(iCtx, iNodeId, &material)
+	if err != nil {
+		return err
+	}
+
+	transactionTime, err := iCtx.GetStub().GetTxTimestamp()
+	if err != nil {
+		return err
+	}
+
+	timeDiff := transactionTime.Seconds - iTransferTime.Unix()
+	if timeDiff < 0 {
+		timeDiff = -timeDiff
+	}
+
+	if timeDiff > 3600 {
+		return fmt.Errorf("Timestamp does not match with transaction's timestamp")
+	}
+
 	return graphContract.TransferNodeOwnership(
 		iCtx,
 		iNodeId,
+		&material,
 		iNewNodeId,
+		iTransferTime,
 		iNewOwnerPublicKey,
 		iSignature,
 		iNewNodeSignature,
@@ -204,6 +174,7 @@ func (c *MaterialContract) TransferMaterial(
 
 /// iSignature is the signature for the final finalized node
 /// iNewNodeSignatures are the signatures for the new split nodes
+/*
 func (c *MaterialContract) SplitMaterial(
 	iCtx contractapi.TransactionContextInterface,
 	iNodeId string,

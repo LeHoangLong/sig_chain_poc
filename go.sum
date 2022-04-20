@@ -52,15 +52,12 @@ github.com/google/go-cmp v0.3.0/go.mod h1:8QqcDgzrUqlUb/G2PQTWiueGozuR1884gddMyw
 github.com/hashicorp/hcl v1.0.0/go.mod h1:E5yfLk+7swimpb2L/Alb/PJmXilQ/rhwaUYs4T20WEQ=
 github.com/hyperledger/fabric-chaincode-go v0.0.0-20200424173110-d7076418f212 h1:1i4lnpV8BDgKOLi1hgElfBqdHXjXieSuj8629mwBZ8o=
 github.com/hyperledger/fabric-chaincode-go v0.0.0-20200424173110-d7076418f212/go.mod h1:N7H3sA7Tx4k/YzFq7U0EPdqJtqvM4Kild0JoCc7C0Dc=
-github.com/hyperledger/fabric-contract-api-go v1.1.0/go.mod h1:nHWt0B45fK53owcFpLtAe8DH0Q5P068mnzkNXMPSL7E=
 github.com/hyperledger/fabric-contract-api-go v1.1.1 h1:gDhOC18gjgElNZ85kFWsbCQq95hyUP/21n++m0Sv6B0=
 github.com/hyperledger/fabric-contract-api-go v1.1.1/go.mod h1:+39cWxbh5py3NtXpRA63rAH7NzXyED+QJx1EZr0tJPo=
 github.com/hyperledger/fabric-protos-go v0.0.0-20190919234611-2a87503ac7c9/go.mod h1:xVYTjK4DtZRBxZ2D9aE4y6AbLaPwue2o/criQyQbVD0=
 github.com/hyperledger/fabric-protos-go v0.0.0-20200424173316-dd554ba3746e/go.mod h1:xVYTjK4DtZRBxZ2D9aE4y6AbLaPwue2o/criQyQbVD0=
 github.com/hyperledger/fabric-protos-go v0.0.0-20200707132912-fee30f3ccd23 h1:SEbB3yH4ISTGRifDamYXAst36gO2kM855ndMJlsv+pc=
 github.com/hyperledger/fabric-protos-go v0.0.0-20200707132912-fee30f3ccd23/go.mod h1:xVYTjK4DtZRBxZ2D9aE4y6AbLaPwue2o/criQyQbVD0=
-github.com/hyperledger/fabric-samples/asset-transfer-basic/chaincode-go v0.0.0-20211222145610-0d7fa171d146 h1:Oe8v+k27NGOMTF7M2MbnGdaOIM1GAfwEQNGJBbZmrs4=
-github.com/hyperledger/fabric-samples/asset-transfer-basic/chaincode-go v0.0.0-20211222145610-0d7fa171d146/go.mod h1:8rb9DzSiWpo1S7qTeYVAv23gebSn1x6Ia/MnhAP3PQA=
 github.com/inconshreveable/mousetrap v1.0.0/go.mod h1:PxqpIevigyE2G7u3NXJIT2ANytuPF1OarO4DADm73n8=
 github.com/joho/godotenv v1.3.0 h1:Zjp+RcGpHhGlrMbJzXTrZZPrWj+1vfm90La1wgB6Bhc=
 github.com/joho/godotenv v1.3.0/go.mod h1:7hK45KPybAkOC6peb+G5yklZfMxEjkZhHbwpqxOKXbg=
@@ -80,6 +77,8 @@ github.com/mailru/easyjson v0.0.0-20190626092158-b2ccc519800e h1:hB2xlXdHp/pmPZq
 github.com/mailru/easyjson v0.0.0-20190626092158-b2ccc519800e/go.mod h1:C1wdFJiN94OJF2b5HbByQZoLdCWB1Yqtg26g4irojpc=
 github.com/mitchellh/go-homedir v1.1.0/go.mod h1:SfyaCUpYCn1Vlf4IUYiD9fPX4A5wJrkLzIz1N1q0pr0=
 github.com/mitchellh/mapstructure v1.1.2/go.mod h1:FVVH3fgwuzCH5S8UJGiWEs2h04kUh9fWfEaFds41c1Y=
+github.com/mitchellh/mapstructure v1.4.3 h1:OVowDSCllw/YjdLkam3/sm7wEtOy59d8ndGgCcyj8cs=
+github.com/mitchellh/mapstructure v1.4.3/go.mod h1:bFUtVrKA4DC2yAKiSyO/QUcy7e+RRV2QTWOzhPopBRo=
 github.com/pelletier/go-toml v1.2.0/go.mod h1:5z9KED0ma1S8pY6P1sdut58dfprrGBbd/94hg7ilaic=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=

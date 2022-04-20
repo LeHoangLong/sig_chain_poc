@@ -47,14 +47,15 @@ github.com/hyperledger/fabric-protos-go/ledger/queryresult
 github.com/hyperledger/fabric-protos-go/ledger/rwset
 github.com/hyperledger/fabric-protos-go/msp
 github.com/hyperledger/fabric-protos-go/peer
-# github.com/hyperledger/fabric-samples/asset-transfer-basic/chaincode-go v0.0.0-20211222145610-0d7fa171d146
-## explicit
 # github.com/joho/godotenv v1.3.0
 github.com/joho/godotenv
 # github.com/mailru/easyjson v0.0.0-20190626092158-b2ccc519800e
 github.com/mailru/easyjson/buffer
 github.com/mailru/easyjson/jlexer
 github.com/mailru/easyjson/jwriter
+# github.com/mitchellh/mapstructure v1.4.3
+## explicit
+github.com/mitchellh/mapstructure
 # github.com/rogpeppe/go-internal v1.3.0
 github.com/rogpeppe/go-internal/modfile
 github.com/rogpeppe/go-internal/module
@@ -62,8 +63,6 @@ github.com/rogpeppe/go-internal/semver
 # github.com/shopspring/decimal v1.3.1
 ## explicit
 github.com/shopspring/decimal
-# github.com/stretchr/testify v1.5.1
-## explicit
 # github.com/xeipuuv/gojsonpointer v0.0.0-20180127040702-4e3ac2762d5f
 github.com/xeipuuv/gojsonpointer
 # github.com/xeipuuv/gojsonreference v0.0.0-20180127040603-bd5ef7bd5415

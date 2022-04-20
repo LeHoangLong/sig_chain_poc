@@ -1,3 +1,3 @@
 peer chaincode invoke -o localhost:7050 --ordererTLSHostnameOverride orderer.example.com --tls --cafile ${FABRIC_HOME}/organizations/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem -C mychannel -n token --peerAddresses localhost:7051 --tlsRootCertFiles ${FABRIC_HOME}/organizations/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/ca.crt --peerAddresses localhost:9051 --tlsRootCertFiles ${FABRIC_HOME}/organizations/peerOrganizations/org2.example.com/peers/peer0.org2.example.com/tls/ca.crt -c '{"function":"CreateToken","Args":["abc", "a", "a", "a"]}'
 
-peer chaincode query -C mychannel -n token -c '{"Args":["DoesTokenExist", "abc"]}'
+#peer chaincode query -C mychannel -n token -c '{"Args":["DoesNodeExists", "abc"]}'
