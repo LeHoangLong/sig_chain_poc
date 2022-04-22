@@ -23,7 +23,7 @@ type NodeHeader struct {
 	Id                    string          `json:"Id"`
 	IsFinalized           bool            `json:"IsFinalized"`
 	PreviousNodeHashedIds map[string]bool `json:"PreviousNodeHashedIds"` /// used as a set
-	NextNodeHashedIds     map[string]bool `json:"NextodeHashedIds"`      /// used as a set
+	NextNodeHashedIds     map[string]bool `json:"NextNodeHashedIds"`     /// used as a set
 	OwnerPublicKey        string          `json:"OwnerPublicKey"`
 	CreatedTime           time.Time       `json:"CreatedTime"`
 	Signature             string          `json:"Signature"`
